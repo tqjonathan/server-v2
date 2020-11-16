@@ -1,11 +1,9 @@
 import Socket
 import Foundation
+
 let port = 7667
 
-struct Point {
-    var x: Double
-    var y: Double
-}
+
 
 do {
     let serverSocket = try Socket.create(family: .inet, type: .datagram, proto: .udp)
@@ -13,38 +11,36 @@ do {
     print("Listening on \(port)")
     var buffer = Data(capacity: 1000)
     repeat {
-        let (bytesRead, clientAddress) = try serverSocket.readDatagram(into: &buffer)
+        var (bytesRead, clientAddress) = try serverSocket.readDatagram(into: &buffer)
         if let address = clientAddress {
             let (clientHostname, clientPort) = Socket.hostnameAndPort(from: address)!
-            print("Received length \(bytesRead) from \(clientHostname):\(clientPort)")
-            
-            var offset = 0
-            let str = buffer.withUnsafeBytes {
+            let dataType = buffer.withUnsafeBytes {
                 String(cString: $0.bindMemory(to: UInt8.self).baseAddress!)
             }
-            offset += str.count + 1
-            print("String: \(str)")
-            print("Current offset: \(offset)")
+            if dataType == "string" {
+                buffer.removeAll()
+                (bytesRead,_) = try serverSocket.readDatagram(into: &buffer)
+                let mess = buffer.withUnsafeBytes {
+                    String(cString: $0.bindMemory(to: UInt8.self).baseAddress!)
+                }
+                if mess != ""{
+                    print("Received length \(bytesRead) from \(clientHostname):\(clientPort)")
+                    print("> Client: \(mess)")
+                    let reply = "\n> Server: \(mess)\n"
+                    try serverSocket.write(from: reply, to: address)//devuelve el mensaje al cliente
+                }
 
-            var number = 0
-            var count = MemoryLayout<Int>.size
-            var bytesCopied = withUnsafeMutableBytes(of: &number) {
-                buffer.copyBytes(to: $0, from: offset..<offset+count)
+            }else{
+                buffer.removeAll()
+                (bytesRead,_) = try serverSocket.readDatagram(into: &buffer)
+                let mess = buffer.withUnsafeBytes {
+                    $0.load(as: Int.self)
+                }
+                // print("Received length \(bytesRead) from \(clientHostname):\(clientPort)")
+                print("> Client: \(mess)")
+                let reply = "\n> Server: \(mess)\n"
+                try serverSocket.write(from: reply, to: address)//devuelve el mensaje al cliente
             }
-            assert(bytesCopied == count)
-            offset += count
-
-            print("Number: \(number)")
-            print("Current offset: \(offset)")
-            var point = Point(x: 0, y: 0)
-            count = MemoryLayout<Point>.size
-            bytesCopied = withUnsafeMutableBytes(of: &point) {
-                buffer.copyBytes(to: $0, from: offset..<offset+count)
-            }
-            assert(bytesCopied == count)
-            offset += count
-            print("Point: \(point)")
-
 
         }
         buffer.removeAll()
